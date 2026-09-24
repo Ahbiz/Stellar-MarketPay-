@@ -69,13 +69,16 @@ function defaultDaoProposalRow(overrides = {}) {
   return {
     id: overrides.id || `prop-${Date.now()}`,
     title: overrides.title || "Default Governance Proposal",
-    description: overrides.description || "Proposal description for governance testing.",
+    description:
+      overrides.description || "Proposal description for governance testing.",
     type: overrides.type || "treasury",
     proposer: overrides.proposer || "G" + "A".repeat(55),
     amount: overrides.amount != null ? String(overrides.amount) : "100.0000000",
     recipient: overrides.recipient || "G" + "B".repeat(55),
     status: overrides.status || "active",
-    voting_ends_at: overrides.voting_ends_at || new Date(Date.now() + 7 * 86400000).toISOString(),
+    voting_ends_at:
+      overrides.voting_ends_at ||
+      new Date(Date.now() + 7 * 86400000).toISOString(),
     created_at: overrides.created_at || new Date().toISOString(),
     executed_at: overrides.executed_at || null,
   };
@@ -116,7 +119,10 @@ function defaultEscrowRow(overrides = {}) {
     job_id: overrides.job_id || "job-1",
     client_address: overrides.client_address || "G" + "A".repeat(55),
     freelancer_address: overrides.freelancer_address || "G" + "B".repeat(55),
-    amount_xlm: overrides.amount_xlm != null ? String(overrides.amount_xlm) : "100.0000000",
+    amount_xlm:
+      overrides.amount_xlm != null
+        ? String(overrides.amount_xlm)
+        : "100.0000000",
     status: overrides.status || "funded",
     created_at: overrides.created_at || new Date().toISOString(),
     updated_at: overrides.updated_at || new Date().toISOString(),
@@ -153,7 +159,8 @@ function defaultPriceAlertRow(overrides = {}) {
     id: overrides.id || `alert-${Date.now()}`,
     user_address: overrides.user_address || "G" + "A".repeat(55),
     condition: overrides.condition || "above",
-    threshold: overrides.threshold != null ? String(overrides.threshold) : "0.1500000",
+    threshold:
+      overrides.threshold != null ? String(overrides.threshold) : "0.1500000",
     one_time: overrides.one_time ?? true,
     triggered: overrides.triggered ?? false,
     triggered_at: overrides.triggered_at || null,
@@ -490,7 +497,9 @@ function createPgMock() {
     }
 
     if (text.startsWith("UPDATE escrow_extensions")) {
-      const ext = escrowExtensions.get(params[0]) || [...escrowExtensions.values()].find((e) => e.id === params[0]);
+      const ext =
+        escrowExtensions.get(params[0]) ||
+        [...escrowExtensions.values()].find((e) => e.id === params[0]);
       if (ext) {
         ext.status = "approved";
         ext.approved_by = params[1];
@@ -827,7 +836,10 @@ function createPgMock() {
     }
 
     // UPDATE ... SET freelancer_address for assignFreelancer
-    if (text.includes("SET freelancer_address = $1, status = 'in_progress'") && text.includes("UPDATE jobs")) {
+    if (
+      text.includes("SET freelancer_address = $1, status = 'in_progress'") &&
+      text.includes("UPDATE jobs")
+    ) {
       const row = jobs.get(params[1]);
       if (!row) return { rows: [] };
       row.freelancer_address = params[0];
@@ -850,6 +862,23 @@ function createPgMock() {
       let rows = [...jobs.values()].filter(
         (job) => job.visibility === "public",
       );
+      // Apply cursor-based filtering if present in the SQL
+      if (text.includes("created_at < $")) {
+        // Cursor params are the two params before limit:
+        // params[params.length-3] = decoded.createdAt
+        // params[params.length-2] = decoded.id
+        // params[params.length-1] = limit
+        const cursorCreatedAt = params[params.length - 3];
+        const cursorId = params[params.length - 2];
+        if (cursorCreatedAt && cursorId) {
+          rows = rows.filter((job) => {
+            if (job.created_at < cursorCreatedAt) return true;
+            if (job.created_at === cursorCreatedAt && job.id < cursorId)
+              return true;
+            return false;
+          });
+        }
+      }
       if (text.includes("deleted_at IS NULL")) {
         rows = rows.filter((job) => !job.deleted_at);
       }
@@ -1158,7 +1187,10 @@ function createPgMock() {
       let list = [...daoProposals.values()];
       if (text.includes("WHERE p.id = $1") || text.includes("WHERE id = $1")) {
         list = list.filter((p) => p.id === params[0]);
-      } else if (text.includes("p.status = $1") || text.includes("status = $1")) {
+      } else if (
+        text.includes("p.status = $1") ||
+        text.includes("status = $1")
+      ) {
         list = list.filter((p) => p.status === params[0]);
       }
       // Keyset-paginated listing (limit/cursor); unpaginated calls keep insertion order.
@@ -1175,9 +1207,15 @@ function createPgMock() {
         if (limitMatch) list = list.slice(0, Number(params[limitMatch[1] - 1]));
       }
       const rows = list.map((p) => {
-        const votes = [...daoVotes.values()].filter((v) => v.proposal_id === p.id);
-        const votesFor = votes.filter((v) => v.support).reduce((acc, v) => acc + Number(v.weight), 0);
-        const votesAgainst = votes.filter((v) => !v.support).reduce((acc, v) => acc + Number(v.weight), 0);
+        const votes = [...daoVotes.values()].filter(
+          (v) => v.proposal_id === p.id,
+        );
+        const votesFor = votes
+          .filter((v) => v.support)
+          .reduce((acc, v) => acc + Number(v.weight), 0);
+        const votesAgainst = votes
+          .filter((v) => !v.support)
+          .reduce((acc, v) => acc + Number(v.weight), 0);
         const totalWeight = votesFor + votesAgainst;
         return {
           ...p,
@@ -1202,13 +1240,25 @@ function createPgMock() {
       return { rows: [row] };
     }
 
-    if (text.startsWith("UPDATE dao_proposals") && text.includes("status = CASE")) {
+    if (
+      text.startsWith("UPDATE dao_proposals") &&
+      text.includes("status = CASE")
+    ) {
       const updated = [];
       for (const [id, prop] of daoProposals.entries()) {
-        if (prop.status === "active" && new Date(prop.voting_ends_at) < new Date()) {
-          const votes = [...daoVotes.values()].filter((v) => v.proposal_id === id);
-          const votesFor = votes.filter((v) => v.support).reduce((acc, v) => acc + Number(v.weight), 0);
-          const votesAgainst = votes.filter((v) => !v.support).reduce((acc, v) => acc + Number(v.weight), 0);
+        if (
+          prop.status === "active" &&
+          new Date(prop.voting_ends_at) < new Date()
+        ) {
+          const votes = [...daoVotes.values()].filter(
+            (v) => v.proposal_id === id,
+          );
+          const votesFor = votes
+            .filter((v) => v.support)
+            .reduce((acc, v) => acc + Number(v.weight), 0);
+          const votesAgainst = votes
+            .filter((v) => !v.support)
+            .reduce((acc, v) => acc + Number(v.weight), 0);
           prop.status = votesFor > votesAgainst ? "passed" : "rejected";
           daoProposals.set(id, prop);
           updated.push({ id: prop.id, status: prop.status, type: prop.type });
@@ -1229,21 +1279,31 @@ function createPgMock() {
     }
 
     if (text.includes("FROM dao_proposals") && text.includes("SUM(amount)")) {
-      const activeProposals = [...daoProposals.values()].filter((p) => p.status === "active").length;
+      const activeProposals = [...daoProposals.values()].filter(
+        (p) => p.status === "active",
+      ).length;
       const allocated = [...daoProposals.values()]
-        .filter((p) => ["passed", "executed"].includes(p.status) && p.type === "treasury")
+        .filter(
+          (p) =>
+            ["passed", "executed"].includes(p.status) && p.type === "treasury",
+        )
         .reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
       return {
-        rows: [{
-          allocated: String(allocated),
-          active_proposals: activeProposals,
-        }],
+        rows: [
+          {
+            allocated: String(allocated),
+            active_proposals: activeProposals,
+          },
+        ],
       };
     }
 
     if (text.startsWith("INSERT INTO dao_arbitrators")) {
-      const existing = daoArbitrators.get(params[0]) || defaultDaoArbitratorRow({ public_key: params[0] });
-      existing.display_name = params[1] !== undefined ? params[1] : existing.display_name;
+      const existing =
+        daoArbitrators.get(params[0]) ||
+        defaultDaoArbitratorRow({ public_key: params[0] });
+      existing.display_name =
+        params[1] !== undefined ? params[1] : existing.display_name;
       existing.bio = params[2] !== undefined ? params[2] : existing.bio;
       daoArbitrators.set(params[0], existing);
       return { rows: [existing] };
@@ -1252,7 +1312,8 @@ function createPgMock() {
     if (text.startsWith("UPDATE dao_arbitrators SET votes_received")) {
       const key = params[0];
       const weight = Number(params[1]) || 1;
-      const arb = daoArbitrators.get(key) || defaultDaoArbitratorRow({ public_key: key });
+      const arb =
+        daoArbitrators.get(key) || defaultDaoArbitratorRow({ public_key: key });
       arb.votes_received = (arb.votes_received || 0) + weight;
       daoArbitrators.set(key, arb);
       return { rows: [arb], rowCount: 1 };
@@ -1291,15 +1352,24 @@ function createPgMock() {
       return { rows: [{ cnt: count }] };
     }
 
-    if (text.includes("FROM price_alerts") && text.includes("WHERE user_address = $1")) {
+    if (
+      text.includes("FROM price_alerts") &&
+      text.includes("WHERE user_address = $1")
+    ) {
       const userAddress = params[0];
       const rows = [...priceAlerts.values()]
         .filter((alert) => alert.user_address === userAddress)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
       return { rows };
     }
 
-    if (text.startsWith("DELETE FROM price_alerts") && text.includes("WHERE id = $1")) {
+    if (
+      text.startsWith("DELETE FROM price_alerts") &&
+      text.includes("WHERE id = $1")
+    ) {
       const alert = priceAlerts.get(params[0]);
       if (!alert || alert.user_address !== params[1]) {
         return { rows: [], rowCount: 0 };
